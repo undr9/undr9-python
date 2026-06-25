@@ -1,0 +1,14 @@
+/dist
+/build
+/.venv
+/.venv-*
+/.pytest_cache
+/.mypy_cache
+/.coverage
+coverage.xml
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/

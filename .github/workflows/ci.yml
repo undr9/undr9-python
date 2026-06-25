@@ -1,0 +1,134 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install SDK
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run unit tests
+        run: python -m unittest -q tests.test_sdk
+
+      - name: Byte-compile sources
+        run: python -m compileall src tests examples
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Verify installability
+        run: python scripts/verify_dist.py
+
+  live-contract:
+    if: vars.UNDR9_SERVER_REPOSITORY != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UNDR9_SDK_LIVE_TESTS: "1"
+      UNDR9_SDK_BASE_URL: http://127.0.0.1:8080
+      UNDR9_SDK_ADMIN_API_KEY: dev-admin-key-000000000001
+      UNDR9_SDK_WRITER_API_KEY: dev-writer-key-000000000001
+      UNDR9_SDK_READER_API_KEY: dev-reader-key-000000000001
+      UNDR9_ADMIN_API_KEY: dev-admin-key-000000000001
+      UNDR9_WRITER_API_KEY: dev-writer-key-000000000001
+      UNDR9_READER_API_KEY: dev-reader-key-000000000001
+    steps:
+      - name: Checkout SDK repo
+        uses: actions/checkout@v4
+
+      - name: Checkout UNDR9 server repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.UNDR9_SERVER_REPOSITORY }}
+          path: undr9-server
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install SDK
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run live contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATA_DIR="$(mktemp -d)"
+          LOG_FILE="$(mktemp)"
+
+          cd undr9-server
+          cargo run -p undr9-cli --bin undr9-cli -- \
+            serve \
+            --root "${DATA_DIR}" \
+            --bind 127.0.0.1:8080 \
+            --node-id ci-node >"${LOG_FILE}" 2>&1 &
+          SERVER_PID=$!
+          cd ..
+
+          cleanup() {
+            kill "${SERVER_PID}" >/dev/null 2>&1 || true
+            wait "${SERVER_PID}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/readyz >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:8080/readyz >/dev/null || {
+            cat "${LOG_FILE}"
+            exit 1
+          }
+
+          python -m unittest -q tests.test_live_contract || {
+            cat "${LOG_FILE}"
+            exit 1
+          }
