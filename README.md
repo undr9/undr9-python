@@ -155,6 +155,42 @@ Built-in retrieval properties:
 These properties are optional, but it is better to add them on nodes when you have the data
 because `ranked_retrieval()` combines them with semantic and graph signals.
 
+## Namespace Concept
+
+UNDR9 does not require every node ID to include a namespace. The Python SDK accepts both plain IDs
+such as `node_a` and namespaced IDs such as `tenant_a:node_1`.
+
+A namespace is a logical prefix embedded in the node ID before the first `:`:
+
+- `node_a` -> no namespace
+- `tenant_a:node_1` -> namespace `tenant_a`
+- `customer_42:invoice_9` -> namespace `customer_42`
+
+This is a logical partitioning convention rather than a separate required field in the node
+schema. It is useful when you want to group data by tenant, workspace, or application domain while
+still talking to one UNDR9 deployment.
+
+Important behavior:
+
+- Node IDs do not need a namespace prefix.
+- If you use namespaces, keep connected nodes in the same namespace.
+- Edges cannot cross namespaces, so an edge between `tenant_a:x` and `tenant_b:y` is rejected.
+- Edges between plain IDs such as `node_a` and `node_b` are valid.
+
+Example:
+
+```python
+writer.create_node(node_id="node_a", node_type="memory")
+writer.create_node(node_id="tenant_a:node_1", node_type="memory")
+writer.create_node(node_id="tenant_a:node_2", node_type="memory")
+writer.create_edge(
+    edge_id="tenant_a:edge_1",
+    source_node_id="tenant_a:node_1",
+    target_node_id="tenant_a:node_2",
+    edge_type="relates_to",
+)
+```
+
 Vector search:
 
 ```python
