@@ -155,6 +155,11 @@ Built-in retrieval properties:
 These properties are optional, but it is better to add them on nodes when you have the data
 because `ranked_retrieval()` combines them with semantic and graph signals.
 
+Node lookup accepts either `id=` or `key=`:
+
+- `client.get_node(id="node_a")` performs exact lookup by node ID.
+- `client.get_node(key="alpha")` resolves a node through the `unique_key` query helper.
+
 ## Namespace Concept
 
 UNDR9 does not require every node ID to include a namespace. The Python SDK accepts both plain IDs
@@ -190,6 +195,111 @@ writer.create_edge(
     edge_type="relates_to",
 )
 ```
+
+Query helpers:
+
+Shared setup:
+
+```python
+from undr9 import PropertyValue, SyncUndr9Client
+
+writer = SyncUndr9Client(
+    base_url,
+    api_key=os.environ["UNDR9_SDK_WRITER_API_KEY"],
+)
+reader = SyncUndr9Client(
+    base_url,
+    api_key=os.environ["UNDR9_SDK_READER_API_KEY"],
+)
+
+writer.create_node(
+    node_id="memory_alpha",
+    node_type="memory",
+    properties={
+        "unique_key": PropertyValue.string("alpha"),
+        "timestamp": PropertyValue.integer(1_717_171_717_000),
+        "score": PropertyValue.integer(98),
+    },
+)
+writer.create_node(
+    node_id="memory_beta",
+    node_type="memory",
+    properties={
+        "unique_key": PropertyValue.string("beta"),
+        "timestamp": PropertyValue.integer(1_717_171_817_000),
+        "score": PropertyValue.integer(87),
+    },
+)
+writer.create_edge(
+    edge_id="edge_alpha_beta",
+    source="memory_alpha",
+    target="memory_beta",
+    edge_type="relates_to",
+)
+```
+
+Exact lookup by unique key:
+
+```python
+by_key = reader.get_node_by_unique_key("alpha")
+print(by_key.nodes[0].id)
+```
+
+Search by label:
+
+```python
+by_label = reader.search_by_label("memory", limit=10)
+print(len(by_label.nodes))
+```
+
+Temporal range query:
+
+```python
+recent = reader.time_range(
+    from_epoch_ms=1_717_171_700_000,
+    to_epoch_ms=1_717_171_900_000,
+    limit=10,
+)
+print([node.id for node in recent.nodes])
+```
+
+Graph traversal:
+
+```python
+walk = reader.traverse(
+    start_node_id="memory_alpha",
+    edge_type="relates_to",
+    direction="Outgoing",
+    max_hops=2,
+    limit=10,
+)
+print([node.id for node in walk.nodes])
+```
+
+Property filtering:
+
+```python
+filtered = reader.filter_nodes(
+    label="memory",
+    where={
+        "op": "gt",
+        "field": "score",
+        "value": {"kind": "Integer", "value": 90},
+    },
+    limit=10,
+)
+print([node.id for node in filtered.nodes])
+
+These helpers map to the same HTTP query endpoint:
+
+
+- `get_node_by_unique_key()` -> `GetNodeByUniqueKey`
+- `search_by_label()` -> `SearchByLabel`
+- `filter_nodes()` -> `FilterNodes`
+- `time_range()` -> `TimeRange`
+- `vector_search()` -> `VectorSearch`
+- `traverse()` -> `Traverse`
+- `ranked_retrieval()` -> `RankedRetrieval`
 
 Vector search:
 
@@ -285,7 +395,7 @@ client = SyncUndr9Client(
     api_key=os.environ["UNDR9_SDK_WRITER_API_KEY"],
 )
 
-node = client.get_node("node_a")
+node = client.get_node(id="node_a")
 
 # Add a new named vector.
 node.vectors["title_embedding"] = [0.9, 0.1, 0.3]
@@ -326,8 +436,12 @@ node = client.create_node(
 )
 
 # Read the node back by id.
-node = client.get_node("node_a")
+node = client.get_node(id="node_a")
 print(node.properties["title"].value)
+
+# Read the same node back by unique key.
+same_node = client.get_node(key="alpha")
+print(same_node.id)
 
 # Update properties by sending the full node again.
 node.properties["title"] = PropertyValue.string("Updated memory")
@@ -549,6 +663,10 @@ python scripts/verify_dist.py
 - Use `cluster_topology()`, `register_cluster_node()`, `mark_cluster_node_health()`, and `promote_cluster_node()` for cluster-topology operations.
 - Use `health()`, `readiness()`, and `metrics()` for runtime observability checks.
 - `SyncUndr9Client` can now be used as a context manager and closes its reusable HTTP client on exit.
+- Use `get_node_by_unique_key()` for exact lookup through the `unique_key` property when you do not already know the node ID.
+- Use `search_by_label()` to fetch nodes by `node_type`.
+- Use `time_range()` for temporal filtering over a timestamp-like property.
+- Use `traverse()` for bounded graph walks from a starting node.
 - Use `vector_name` to target a named vector space for `vector_search()` and `ranked_retrieval()`.
 - Use `top_k` to override the semantic candidate budget when needed.
 - Use `filter_nodes()` for database-side property predicates such as `eq`, `gt`, `gte`, `lt`, `lte`, `and`, and `or`.

@@ -26,6 +26,31 @@ from .models import (
 )
 
 
+def _resolve_node_lookup(
+    node_id: str | None = None,
+    *,
+    id: str | None = None,
+    key: str | None = None,
+) -> tuple[str, str]:
+    if node_id is not None and id is not None:
+        raise ValueError("pass either positional node_id or id=, not both")
+
+    resolved_id = id if id is not None else node_id
+    provided = [value is not None for value in (resolved_id, key)]
+    if sum(provided) != 1:
+        raise ValueError("pass exactly one of id= or key=")
+
+    if key is not None:
+        return ("key", key)
+    return ("id", resolved_id)
+
+
+def _first_node_from_query(response: QueryResponse, *, key: str) -> Node:
+    if not response.nodes:
+        raise LookupError(f"no node found for unique key {key!r}")
+    return response.nodes[0]
+
+
 def _upsert_node_operation(node: Node) -> dict[str, Any]:
     return {"UpsertNode": node.to_dict()}
 
@@ -227,8 +252,21 @@ class SyncUndr9Client:
         payload = self._transport.request("POST", "/v1/nodes", node.to_dict())
         return Node.from_dict(payload)
 
-    def get_node(self, node_id: str) -> Node:
-        payload = self._transport.request("GET", f"/v1/nodes/{node_id}")
+    def get_node(
+        self,
+        node_id: str | None = None,
+        *,
+        id: str | None = None,
+        key: str | None = None,
+    ) -> Node:
+        lookup_kind, lookup_value = _resolve_node_lookup(node_id, id=id, key=key)
+        if lookup_kind == "key":
+            return _first_node_from_query(
+                self.get_node_by_unique_key(lookup_value),
+                key=lookup_value,
+            )
+
+        payload = self._transport.request("GET", f"/v1/nodes/{lookup_value}")
         return Node.from_dict(payload)
 
     def update_node(self, node: Node) -> Node:
@@ -693,8 +731,21 @@ class AsyncUndr9Client:
         response = await self._request("POST", "/v1/nodes", payload.to_dict())
         return Node.from_dict(response)
 
-    async def get_node(self, node_id: str) -> Node:
-        payload = await self._request("GET", f"/v1/nodes/{node_id}")
+    async def get_node(
+        self,
+        node_id: str | None = None,
+        *,
+        id: str | None = None,
+        key: str | None = None,
+    ) -> Node:
+        lookup_kind, lookup_value = _resolve_node_lookup(node_id, id=id, key=key)
+        if lookup_kind == "key":
+            return _first_node_from_query(
+                await self.get_node_by_unique_key(lookup_value),
+                key=lookup_value,
+            )
+
+        payload = await self._request("GET", f"/v1/nodes/{lookup_value}")
         return Node.from_dict(payload)
 
     async def update_node(self, node: Node) -> Node:

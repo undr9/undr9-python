@@ -355,6 +355,14 @@ class AsyncFakeTransport:
             return {"service": "undr9", "status": "ok"}
         if path == "/readyz" and method == "GET":
             return {"service": "undr9", "status": "ready"}
+        if path == "/v1/nodes/node_a" and method == "GET":
+            return {
+                "id": "node_a",
+                "node_type": "memory",
+                "properties": {
+                    "unique_key": {"kind": "String", "value": "alpha"}
+                },
+            }
         if path == "/v1/query" and method == "POST":
             return {
                 "plan_kind": "VectorSimilarity",
@@ -706,6 +714,32 @@ class SyncClientTests(unittest.TestCase):
         with SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport) as managed:
             self.assertIsNotNone(managed)
 
+    def test_get_node_supports_id_and_key_lookup(self):
+        transport = FakeTransport()
+        client = SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        by_id = client.get_node(id="node_a")
+        by_key = client.get_node(key="alpha")
+
+        self.assertEqual(by_id.id, "node_a")
+        self.assertEqual(by_key.properties["unique_key"].value, "alpha")
+        self.assertEqual(transport.calls[0], ("GET", "/v1/nodes/node_a", None))
+        self.assertEqual(
+            transport.calls[1],
+            ("POST", "/v1/query", {"GetNodeByUniqueKey": {"unique_key": "alpha"}}),
+        )
+
+    def test_get_node_rejects_ambiguous_lookup_arguments(self):
+        transport = FakeTransport()
+        client = SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        with self.assertRaisesRegex(ValueError, "exactly one of id= or key="):
+            client.get_node()
+        with self.assertRaisesRegex(ValueError, "exactly one of id= or key="):
+            client.get_node(id="node_a", key="alpha")
+        with self.assertRaisesRegex(ValueError, "pass either positional node_id or id=, not both"):
+            client.get_node("node_a", id="node_a")
+
     def test_vector_search_parses_ranked_results_and_passes_current_options(self):
         transport = FakeTransport()
         client = SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
@@ -956,6 +990,32 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(health.service, "undr9")
         self.assertEqual(ready.status, "ready")
         self.assertIn("undr9_requests_total", metrics)
+
+    async def test_async_get_node_supports_id_and_key_lookup(self):
+        transport = AsyncFakeTransport()
+        client = AsyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        by_id = await client.get_node(id="node_a")
+        by_key = await client.get_node(key="alpha")
+
+        self.assertEqual(by_id.id, "node_a")
+        self.assertEqual(by_key.properties["unique_key"].value, "alpha")
+        self.assertEqual(transport.calls[0], ("GET", "/v1/nodes/node_a", None))
+        self.assertEqual(
+            transport.calls[1],
+            ("POST", "/v1/query", {"GetNodeByUniqueKey": {"unique_key": "alpha"}}),
+        )
+
+    async def test_async_get_node_rejects_ambiguous_lookup_arguments(self):
+        transport = AsyncFakeTransport()
+        client = AsyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        with self.assertRaisesRegex(ValueError, "exactly one of id= or key="):
+            await client.get_node()
+        with self.assertRaisesRegex(ValueError, "exactly one of id= or key="):
+            await client.get_node(id="node_a", key="alpha")
+        with self.assertRaisesRegex(ValueError, "pass either positional node_id or id=, not both"):
+            await client.get_node("node_a", id="node_a")
 
     async def test_async_query_stream_returns_typed_frames(self):
         transport = AsyncFakeTransport()

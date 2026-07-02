@@ -119,8 +119,11 @@ class LiveSyncContractTests(unittest.TestCase):
         self.assertEqual(created.id, node_id)
         self.assertEqual(created.properties["unique_key"].value, unique_key)
 
-        fetched = self.writer_client.get_node(node_id)
+        fetched = self.writer_client.get_node(id=node_id)
         self.assertEqual(fetched.node_type, "memory")
+
+        fetched_by_key = self.reader_client.get_node(key=unique_key)
+        self.assertEqual(fetched_by_key.id, node_id)
 
         by_key = self.reader_client.get_node_by_unique_key(unique_key)
         self.assertEqual(by_key.nodes[0].id, node_id)
@@ -269,4 +272,3 @@ class LiveAsyncContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(frames[0].frame_type, "meta")
         self.assertTrue(any(frame.node and frame.node.id == node_id for frame in frames[1:-1]))
-
