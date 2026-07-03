@@ -268,13 +268,20 @@ Graph traversal:
 ```python
 walk = reader.traverse(
     start_node_id="memory_alpha",
-    edge_type="relates_to",
-    direction="Outgoing",
+    edge_type=None,
+    direction="Both",
     max_hops=2,
-    limit=10,
+    limit=40,
+    timeout_ms=5_000,
+    edge_types=[],
+    node_labels=[],
 )
 print([node.id for node in walk.nodes])
 ```
+
+`traverse()` accepts `direction="Outgoing"`, `direction="Incoming"`, or
+`direction="Both"`. Use `edge_type=None` together with `edge_types=[]` when you want
+to traverse all edge types without an extra filter.
 
 Property filtering:
 

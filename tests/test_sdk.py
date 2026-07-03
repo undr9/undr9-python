@@ -794,6 +794,41 @@ class SyncClientTests(unittest.TestCase):
             "score",
         )
 
+    def test_traverse_builds_expected_payload(self):
+        transport = FakeTransport()
+        client = SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        response = client.traverse(
+            start_node_id="demo:med-hC0Kz2-1xzPe",
+            edge_type=None,
+            direction="Both",
+            max_hops=2,
+            limit=40,
+            timeout_ms=5_000,
+            edge_types=[],
+            node_labels=[],
+        )
+
+        self.assertEqual(response.plan_kind, "VectorSimilarity")
+        self.assertEqual(transport.calls[0][1], "/v1/query")
+        self.assertEqual(
+            transport.calls[0][2],
+            {
+                "Traverse": {
+                    "start_node_id": "demo:med-hC0Kz2-1xzPe",
+                    "edge_type": None,
+                    "direction": "Both",
+                    "max_hops": 2,
+                    "limit": 40,
+                    "timeout_ms": 5_000,
+                    "constraints": {
+                        "edge_types": [],
+                        "node_labels": [],
+                    },
+                }
+            },
+        )
+
     def test_query_stream_returns_typed_frames(self):
         transport = FakeTransport()
         client = SyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
@@ -1028,6 +1063,41 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([frame.frame_type for frame in frames], ["meta", "node", "end"])
         self.assertEqual(frames[1].node.id, "node_a")
         self.assertEqual(frames[2].item_count, 1)
+
+    async def test_async_traverse_builds_expected_payload(self):
+        transport = AsyncFakeTransport()
+        client = AsyncUndr9Client("http://localhost:8080", api_key="test", transport=transport)
+
+        response = await client.traverse(
+            start_node_id="demo:med-hC0Kz2-1xzPe",
+            edge_type=None,
+            direction="Both",
+            max_hops=2,
+            limit=40,
+            timeout_ms=5_000,
+            edge_types=[],
+            node_labels=[],
+        )
+
+        self.assertEqual(response.plan_kind, "VectorSimilarity")
+        self.assertEqual(transport.calls[0][1], "/v1/query")
+        self.assertEqual(
+            transport.calls[0][2],
+            {
+                "Traverse": {
+                    "start_node_id": "demo:med-hC0Kz2-1xzPe",
+                    "edge_type": None,
+                    "direction": "Both",
+                    "max_hops": 2,
+                    "limit": 40,
+                    "timeout_ms": 5_000,
+                    "constraints": {
+                        "edge_types": [],
+                        "node_labels": [],
+                    },
+                }
+            },
+        )
 
     async def test_async_transaction_helpers_cover_full_flow(self):
         transport = AsyncFakeTransport()
